@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 import httpx
 import re
 import os
@@ -14,6 +16,7 @@ app = FastAPI()
 # Get credentials from environment
 PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+VERIFY_TOKEN = "your_custom_verify_token"
 
 # WhatsApp Cloud API endpoint
 META_API_URL = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
@@ -67,3 +70,41 @@ async def send_message(phone_number: str = Query(..., description="Phone number 
     except Exception as e:
         # Catch any unexpected errors (like network issues)
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    
+    
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    """
+    This GET method is called by Meta to verify your webhook URL.
+    """
+    params = dict(request.query_params)
+    if (
+        params.get("hub.mode") == "subscribe"
+        and params.get("hub.verify_token") == "your_custom_verify_token"
+    ):
+        return int(params.get("hub.challenge"))
+    raise HTTPException(status_code=403, detail="Verification failed")
+    
+
+@app.post("/webhook")
+async def receive_message(request: Request):
+    body = await request.json()
+    print("Received message:", body)
+
+    try:
+        # Navigate to the actual message (this is just a structure example)
+        entry = body["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
+        messages = value.get("messages")
+
+        if messages:
+            from_number = messages[0]["from"]
+            message_text = messages[0]["text"]["body"]
+            print(f"New message from {from_number}: {message_text}")
+
+        return {"status": "received"}
+
+    except Exception as e:
+        print("Error while parsing message:", e)
+        return {"status": "error"}
